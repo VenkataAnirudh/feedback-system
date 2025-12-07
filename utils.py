@@ -67,7 +67,7 @@ def configure_gemini_api(api_key):
     """Configure Gemini API for admin use"""
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         # Quick test
         response = model.generate_content("Say OK")
         if response.text:
@@ -167,3 +167,4 @@ def get_rating_text(rating):
     """Return text for rating"""
     texts = {1: "Very Dissatisfied", 2: "Dissatisfied", 3: "Neutral", 4: "Satisfied", 5: "Very Satisfied"}
     return texts.get(rating, "Unknown")
+
