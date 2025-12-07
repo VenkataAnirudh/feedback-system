@@ -59,8 +59,7 @@ if 'current_rating' not in st.session_state:
 if not st.session_state.submitted:
     st.markdown("### 📊 Rate Your Experience")
     
-    rating = st.slider("Drag to rate", 1, 5, st.session_state.current_rating)
-    st.session_state.current_rating = rating
+    rating = st.slider("Drag to rate", 1, 5, key="current_rating")
     
     emoji = get_rating_emoji(rating)
     rating_text = get_rating_text(rating)
@@ -119,4 +118,3 @@ st.markdown("""
     <p style='margin: 0;'>🤖 AI-Powered Feedback System</p>
 </div>
 """, unsafe_allow_html=True)
-
