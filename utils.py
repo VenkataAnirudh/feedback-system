@@ -5,10 +5,6 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# ============================================
-# GOOGLE SHEETS FUNCTIONS
-# ============================================
-
 def get_google_sheet():
     """Connect to Google Sheets with detailed error handling"""
     try:
@@ -23,7 +19,6 @@ def get_google_sheet():
         sheet = client.open_by_url(sheet_url)
         worksheet = sheet.sheet1
         
-        # Verify headers exist
         headers = worksheet.row_values(1)
         expected = ['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions']
         
@@ -49,7 +44,6 @@ def load_reviews():
         if worksheet is None:
             return pd.DataFrame(columns=['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions'])
         
-        # Get all records
         data = worksheet.get_all_records()
         
         if not data:
@@ -57,22 +51,17 @@ def load_reviews():
         
         df = pd.DataFrame(data)
         
-        # Ensure all required columns exist
         required_cols = ['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions']
         for col in required_cols:
             if col not in df.columns:
                 df[col] = ''
         
-        # Convert timestamp to datetime - CRITICAL FIX
         if 'timestamp' in df.columns:
             df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-            # Drop rows with invalid timestamps
             df = df.dropna(subset=['timestamp'])
         
-        # Fill NaN with empty strings for safety
         df = df.fillna('')
         
-        # Convert rating to int
         df['rating'] = pd.to_numeric(df['rating'], errors='coerce').fillna(3).astype(int)
         
         return df
@@ -93,9 +82,9 @@ def save_review(rating, review):
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             int(rating),
             str(review),
-            "",  # ai_response - empty initially
-            "",  # ai_summary - empty initially
-            ""   # recommended_actions - empty initially
+            "",
+            "",
+            ""
         ]
         
         worksheet.append_row(new_row)
@@ -112,12 +101,8 @@ def update_review_with_ai(row_index, ai_response, ai_summary, recommended_action
         if worksheet is None:
             return False
         
-        # row_index is the DataFrame index (0-based)
-        # Google Sheets rows are 1-based, and we have a header row
-        # So we need to add 2 to get the correct sheet row
         sheet_row = row_index + 2
         
-        # Update columns D, E, F (4, 5, 6)
         worksheet.update_cell(sheet_row, 4, str(ai_response))
         worksheet.update_cell(sheet_row, 5, str(ai_summary))
         worksheet.update_cell(sheet_row, 6, str(recommended_actions))
@@ -128,17 +113,12 @@ def update_review_with_ai(row_index, ai_response, ai_summary, recommended_action
         st.error(f"❌ Update error: {str(e)}")
         return False
 
-# ============================================
-# GEMINI AI FUNCTIONS
-# ============================================
-
 def configure_gemini_api(api_key):
     """Configure and test Gemini API connection"""
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash-lite')
         
-        # Test the connection
         response = model.generate_content("Say OK")
         if response.text:
             return model
@@ -151,7 +131,6 @@ def configure_gemini_api(api_key):
 def generate_all_ai_content(model, rating, review):
     """Generate AI response, summary, and recommended actions"""
     try:
-        # 1. User-facing response
         user_prompt = f"""You are a professional customer service representative. Write a brief, empathetic response (2-3 sentences) to this customer review:
 
 Rating: {rating}/5 stars
@@ -166,7 +145,6 @@ Response:"""
         
         user_response = model.generate_content(user_prompt).text.strip()
         
-        # 2. Summary (one sentence)
         summary_prompt = f"""Summarize this review in ONE concise sentence (maximum 12 words):
 
 Rating: {rating}/5
@@ -176,7 +154,6 @@ Summary:"""
         
         summary = model.generate_content(summary_prompt).text.strip()
         
-        # 3. Recommended actions
         actions_prompt = f"""Based on this customer feedback, suggest 3 specific, actionable steps the business should take. Format as a numbered list.
 
 Rating: {rating}/5 stars
@@ -195,7 +172,6 @@ Provide 3 concrete action items:"""
     except Exception as e:
         st.warning(f"⚠️ AI generation failed: {str(e)}")
         
-        # Fallback based on rating
         if rating <= 2:
             return {
                 'ai_response': "We sincerely apologize for your experience. Your feedback is invaluable and we're committed to making this right. Our team will reach out to you shortly.",
@@ -215,18 +191,14 @@ Provide 3 concrete action items:"""
                 'recommended_actions': "1. Thank the customer personally if possible\n2. Share positive feedback with the team\n3. Request permission to use as testimonial"
             }
 
-# ============================================
-# UTILITY FUNCTIONS - SAFE DATA ACCESS
-# ============================================
-
 def get_sentiment_color(rating):
     """Return color based on rating sentiment"""
     colors = {
-        1: "#D32F2F",  # Red
-        2: "#F57C00",  # Orange
-        3: "#FBC02D",  # Yellow
-        4: "#7CB342",  # Light Green
-        5: "#388E3C"   # Dark Green
+        1: "#D32F2F",
+        2: "#F57C00",
+        3: "#FBC02D",
+        4: "#7CB342",
+        5: "#388E3C"
     }
     return colors.get(rating, "#757575")
 
@@ -276,7 +248,6 @@ def time_ago(timestamp):
 def check_if_ai_processed(row):
     """Check if a review row has been processed by AI - SAFE ACCESS"""
     try:
-        # Safely check if ai_response exists and is not empty
         if 'ai_response' not in row:
             return False
         ai_response = str(row['ai_response']).strip()
