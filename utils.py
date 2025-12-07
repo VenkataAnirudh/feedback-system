@@ -5,9 +5,12 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# Google Sheets Setup
+# ============================================
+# GOOGLE SHEETS FUNCTIONS
+# ============================================
+
 def get_google_sheet():
-    """Connect to Google Sheets"""
+    """Connect to Google Sheets with detailed error handling"""
     try:
         scope = ['https://spreadsheets.google.com/feeds',
                  'https://www.googleapis.com/auth/drive']
@@ -20,27 +23,53 @@ def get_google_sheet():
         sheet = client.open_by_url(sheet_url)
         worksheet = sheet.sheet1
         
+        # Verify headers exist
+        headers = worksheet.row_values(1)
+        expected = ['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions']
+        
+        if not headers:
+            worksheet.append_row(expected)
+            st.success("✅ Initialized Google Sheet headers")
+        
         return worksheet
+    except KeyError as e:
+        st.error(f"❌ Missing secret: {str(e)}")
+        return None
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error("❌ Google Sheet not found. Check SHEET_URL")
+        return None
     except Exception as e:
-        st.error(f"Google Sheets connection error: {str(e)}")
+        st.error(f"❌ Connection error: {str(e)}")
         return None
 
 def load_reviews():
-    """Load reviews from Google Sheets"""
+    """Load all reviews from Google Sheets"""
     try:
         worksheet = get_google_sheet()
         if worksheet is None:
+            st.warning("⚠️ Cannot connect to Google Sheets")
             return pd.DataFrame(columns=['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions'])
         
+        # Get all records
         data = worksheet.get_all_records()
+        
+        if not data:
+            st.info("📭 No reviews found in Google Sheet yet")
+            return pd.DataFrame(columns=['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions'])
+        
         df = pd.DataFrame(data)
         
+        # Convert timestamp to datetime
         if len(df) > 0 and 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        
+        # Fill empty strings with actual empty values for better checking
+        df = df.fillna('')
         
         return df
+        
     except Exception as e:
-        st.error(f"Load error: {str(e)}")
+        st.error(f"❌ Error loading reviews: {str(e)}")
         return pd.DataFrame(columns=['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions'])
 
 def save_review(rating, review):
@@ -48,6 +77,7 @@ def save_review(rating, review):
     try:
         worksheet = get_google_sheet()
         if worksheet is None:
+            st.error("❌ Cannot connect to Google Sheet")
             return False
         
         new_row = [
@@ -61,67 +91,89 @@ def save_review(rating, review):
         
         worksheet.append_row(new_row)
         return True
+        
     except Exception as e:
-        st.error(f"Save error: {str(e)}")
+        st.error(f"❌ Save error: {str(e)}")
         return False
 
-def update_review_with_ai(row_number, ai_response, ai_summary, recommended_actions):
-    """Update a review with AI content"""
+def update_review_with_ai(row_index, ai_response, ai_summary, recommended_actions):
+    """Update a specific review row with AI-generated content"""
     try:
         worksheet = get_google_sheet()
         if worksheet is None:
             return False
         
-        # row_number is 0-indexed in dataframe, but sheets is 1-indexed + header row
-        sheet_row = row_number + 2
+        # row_index is the DataFrame index (0-based)
+        # Google Sheets rows are 1-based, and we have a header row
+        # So we need to add 2 to get the correct sheet row
+        sheet_row = row_index + 2
         
-        worksheet.update_cell(sheet_row, 4, ai_response)  # Column D
-        worksheet.update_cell(sheet_row, 5, ai_summary)   # Column E
-        worksheet.update_cell(sheet_row, 6, recommended_actions)  # Column F
+        # Update columns D, E, F (4, 5, 6)
+        worksheet.update_cell(sheet_row, 4, str(ai_response))
+        worksheet.update_cell(sheet_row, 5, str(ai_summary))
+        worksheet.update_cell(sheet_row, 6, str(recommended_actions))
         
         return True
+        
     except Exception as e:
-        st.error(f"Update error: {str(e)}")
+        st.error(f"❌ Update error: {str(e)}")
         return False
 
+# ============================================
+# GEMINI AI FUNCTIONS
+# ============================================
+
 def configure_gemini_api(api_key):
-    """Configure Gemini API"""
+    """Configure and test Gemini API connection"""
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-pro')
+        
+        # Test the connection
         response = model.generate_content("Say OK")
         if response.text:
             return model
         return None
+        
     except Exception as e:
+        st.error(f"❌ Gemini API Error: {str(e)}")
         return None
 
 def generate_all_ai_content(model, rating, review):
-    """Generate all AI content at once"""
+    """Generate AI response, summary, and recommended actions"""
     try:
-        # User response
-        user_prompt = f"""Write a brief, empathetic customer service response (2-3 sentences) to this review:
+        # 1. User-facing response
+        user_prompt = f"""You are a professional customer service representative. Write a brief, empathetic response (2-3 sentences) to this customer review:
 
 Rating: {rating}/5 stars
 Review: {review}
+
+Generate a professional response that:
+- Thanks the customer for their feedback
+- Addresses their sentiment appropriately
+- Is warm and genuine
 
 Response:"""
         
         user_response = model.generate_content(user_prompt).text.strip()
         
-        # Summary
-        summary_prompt = f"""Summarize in ONE sentence (max 12 words):
+        # 2. Summary (one sentence)
+        summary_prompt = f"""Summarize this review in ONE concise sentence (maximum 12 words):
+
 Rating: {rating}/5
 Review: {review}
+
 Summary:"""
         
         summary = model.generate_content(summary_prompt).text.strip()
         
-        # Actions
-        actions_prompt = f"""List 3 specific actions based on this feedback:
-Rating: {rating}/5
+        # 3. Recommended actions
+        actions_prompt = f"""Based on this customer feedback, suggest 3 specific, actionable steps the business should take. Format as a numbered list.
+
+Rating: {rating}/5 stars
 Review: {review}
-Actions (numbered 1,2,3):"""
+
+Provide 3 concrete action items:"""
         
         actions = model.generate_content(actions_prompt).text.strip()
         
@@ -131,45 +183,71 @@ Actions (numbered 1,2,3):"""
             'recommended_actions': actions
         }
         
-    except:
-        # Fallback
+    except Exception as e:
+        st.warning(f"⚠️ AI generation failed: {str(e)}")
+        
+        # Fallback based on rating
         if rating <= 2:
             return {
-                'ai_response': "We sincerely apologize. Your feedback is invaluable and we're taking immediate action.",
-                'ai_summary': f"{rating}★ - Customer dissatisfied",
-                'recommended_actions': "1. Contact customer ASAP\n2. Investigate issue\n3. Offer resolution"
+                'ai_response': "We sincerely apologize for your experience. Your feedback is invaluable and we're committed to making this right. Our team will reach out to you shortly.",
+                'ai_summary': f"{rating}★ - Customer reported negative experience",
+                'recommended_actions': "1. Contact customer immediately to apologize and understand issue\n2. Investigate root cause of the problem\n3. Implement corrective measures to prevent recurrence"
             }
         elif rating == 3:
             return {
-                'ai_response': "Thank you for your feedback. We're always working to improve your experience.",
-                'ai_summary': f"{rating}★ - Neutral feedback",
-                'recommended_actions': "1. Follow up with customer\n2. Review processes\n3. Monitor feedback"
+                'ai_response': "Thank you for your feedback. We appreciate you taking the time to share your experience. We're always working to improve and your input helps us do that.",
+                'ai_summary': f"{rating}★ - Mixed feedback with room for improvement",
+                'recommended_actions': "1. Follow up with customer to understand specific concerns\n2. Review internal processes related to feedback\n3. Monitor similar feedback patterns"
             }
         else:
             return {
-                'ai_response': f"Thank you for the {rating}-star review! We're thrilled you had a great experience!",
-                'ai_summary': f"{rating}★ - Very satisfied",
-                'recommended_actions': "1. Thank customer\n2. Share with team\n3. Request testimonial"
+                'ai_response': f"Thank you so much for the wonderful {rating}-star review! We're thrilled that you had a great experience with us. We look forward to serving you again!",
+                'ai_summary': f"{rating}★ - Highly satisfied customer",
+                'recommended_actions': "1. Thank the customer personally if possible\n2. Share positive feedback with the team\n3. Request permission to use as testimonial"
             }
 
+# ============================================
+# UTILITY FUNCTIONS
+# ============================================
+
 def get_sentiment_color(rating):
-    colors = {1: "#D32F2F", 2: "#F57C00", 3: "#FBC02D", 4: "#7CB342", 5: "#388E3C"}
+    """Return color based on rating sentiment"""
+    colors = {
+        1: "#D32F2F",  # Red
+        2: "#F57C00",  # Orange
+        3: "#FBC02D",  # Yellow
+        4: "#7CB342",  # Light Green
+        5: "#388E3C"   # Dark Green
+    }
     return colors.get(rating, "#757575")
 
 def get_rating_emoji(rating):
-    emojis = {1: "😞", 2: "😕", 3: "😐", 4: "😊", 5: "🤩"}
+    """Return emoji based on rating"""
+    emojis = {
+        1: "😞",
+        2: "😕",
+        3: "😐",
+        4: "😊",
+        5: "🤩"
+    }
     return emojis.get(rating, "⭐")
 
 def get_rating_text(rating):
-    texts = {1: "Very Dissatisfied", 2: "Dissatisfied", 3: "Neutral", 4: "Satisfied", 5: "Very Satisfied"}
+    """Return text description based on rating"""
+    texts = {
+        1: "Very Dissatisfied",
+        2: "Dissatisfied",
+        3: "Neutral",
+        4: "Satisfied",
+        5: "Very Satisfied"
+    }
     return texts.get(rating, "Unknown")
 
 def time_ago(timestamp):
-    """Calculate time ago"""
+    """Calculate and return human-readable time difference"""
     try:
         now = datetime.now()
         diff = now - pd.to_datetime(timestamp)
-        
         seconds = diff.total_seconds()
         
         if seconds < 60:
@@ -184,4 +262,13 @@ def time_ago(timestamp):
             days = int(seconds / 86400)
             return f"{days}d ago"
     except:
-        return ""
+        return "Unknown"
+
+def check_if_ai_processed(row):
+    """Check if a review row has been processed by AI"""
+    try:
+        # Check if ai_response exists and is not empty
+        ai_response = str(row.get('ai_response', '')).strip()
+        return len(ai_response) > 0
+    except:
+        return False
