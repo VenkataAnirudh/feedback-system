@@ -1,13 +1,15 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 from utils import (
     load_reviews,
+    configure_gemini_api,
+    generate_all_ai_content,
+    update_review_with_ai,
     get_sentiment_color,
-    get_sentiment_bg_color,
     get_rating_emoji,
-    get_rating_text
+    get_rating_text,
+    init_session_storage
 )
 from datetime import datetime, timedelta
 
@@ -17,6 +19,9 @@ st.set_page_config(
     page_icon="📊",
     layout="wide"
 )
+
+# Initialize storage
+init_session_storage()
 
 # Professional CSS
 st.markdown("""
@@ -133,10 +138,21 @@ div[data-testid="metric-container"] {
     margin: 0.5rem 0;
 }
 
-.sentiment-label {
-    font-size: 1rem;
-    color: #666;
-    margin-top: 0.5rem;
+.api-config-box {
+    background: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 15px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.pending-badge {
+    background: #ff9800;
+    color: white;
+    padding: 0.3rem 0.8rem;
+    border-radius: 15px;
+    font-size: 0.85rem;
+    font-weight: 600;
 }
 
 #MainMenu {visibility: hidden;}
@@ -148,31 +164,53 @@ footer {visibility: hidden;}
 st.markdown("""
 <div class="dashboard-header">
     <div class="dashboard-title">📊 Admin Analytics Dashboard</div>
-    <div class="dashboard-subtitle">Real-time customer feedback monitoring with AI-powered insights</div>
+    <div class="dashboard-subtitle">AI-powered customer feedback analysis and management</div>
 </div>
 """, unsafe_allow_html=True)
+
+# API Configuration Section - PROMINENT
+st.markdown('<div class="api-config-box">', unsafe_allow_html=True)
+st.markdown("### 🔑 AI Configuration (Required)")
+
+col1, col2 = st.columns([3, 1])
+
+with col1:
+    api_key = st.text_input(
+        "Enter Gemini API Key to generate AI insights",
+        type="password",
+        help="Get free API key: https://makersuite.google.com/app/apikey",
+        placeholder="AIzaSy..."
+    )
+
+with col2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    if api_key:
+        st.success("✅ Configured")
+    else:
+        st.warning("⚠️ Not Set")
+
+if not api_key:
+    st.info("📝 **Get your free API key:** https://makersuite.google.com/app/apikey")
+    st.warning("⚠️ AI features (summaries, responses, recommendations) require API key")
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
     st.markdown("## 🎛️ Dashboard Controls")
     st.markdown("---")
     
-    # Refresh button
     if st.button("🔄 Refresh Data", use_container_width=True, type="primary"):
         st.rerun()
-    
-    auto_refresh = st.checkbox("⚡ Auto-refresh (30s)", value=False)
     
     st.markdown("---")
     st.markdown("## 📅 Filters")
     
-    # Date filter
     date_filter = st.selectbox(
         "Time Period",
         ["All Time", "Today", "Last 7 Days", "Last 30 Days"]
     )
     
-    # Rating filter  
     rating_filter = st.multiselect(
         "Star Ratings",
         options=[1, 2, 3, 4, 5],
@@ -181,10 +219,30 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    st.info("💡 **Tip**: Critical reviews (1-2 ⭐) require immediate attention!")
-
-if auto_refresh:
-    st.rerun()
+    
+    # Show processing button if API key is set
+    if api_key:
+        st.markdown("## 🤖 AI Processing")
+        if st.button("🚀 Process All Pending", use_container_width=True, type="secondary"):
+            with st.spinner("Processing reviews with AI..."):
+                model = configure_gemini_api(api_key)
+                if model:
+                    df = load_reviews()
+                    processed = 0
+                    for idx, row in df.iterrows():
+                        if pd.isna(row['ai_response']) or row['ai_response'] == "":
+                            ai_content = generate_all_ai_content(model, row['rating'], row['review'])
+                            update_review_with_ai(
+                                idx,
+                                ai_content['ai_response'],
+                                ai_content['ai_summary'],
+                                ai_content['recommended_actions']
+                            )
+                            processed += 1
+                    st.success(f"✅ Processed {processed} reviews!")
+                    st.rerun()
+                else:
+                    st.error("❌ API configuration failed")
 
 # Load data
 df = load_reviews()
@@ -207,17 +265,19 @@ if not df.empty and 'timestamp' in df.columns:
 
 # Check if data exists
 if df.empty:
-    st.warning("📭 No reviews found matching your filters")
+    st.warning("📭 No reviews found")
     st.info("""
-    **To populate this dashboard:**
+    **To see data:**
     
-    1. 🌐 Visit the User Dashboard
-    2. ⭐ Submit reviews with ratings
-    3. 🔄 Return here and click 'Refresh Data'
-    
-    **Note:** Changes may take 1-2 minutes to sync
+    1. 🌐 Go to User Dashboard
+    2. ⭐ Submit reviews
+    3. 🔄 Come back and refresh
+    4. 🤖 Click "Process All Pending" to generate AI insights
     """)
     st.stop()
+
+# Count pending reviews
+pending_count = len(df[df['ai_response'] == ""])
 
 # Key Metrics
 st.markdown("## 📈 Key Performance Indicators")
@@ -233,22 +293,14 @@ with col2:
 
 with col3:
     critical = len(df[df['rating'] <= 2])
-    st.metric("🚨 Critical", critical, delta=-critical if critical > 0 else 0, delta_color="inverse")
+    st.metric("🚨 Critical", critical)
 
 with col4:
     positive = len(df[df['rating'] >= 4])
-    st.metric("✅ Positive", positive, delta=positive if positive > 0 else 0)
+    st.metric("✅ Positive", positive)
 
 with col5:
-    if len(df) > 1:
-        df_sorted = df.sort_values('timestamp')
-        half = max(1, len(df_sorted) // 2)
-        recent = df_sorted.tail(half)['rating'].mean()
-        older = df_sorted.head(half)['rating'].mean()
-        trend = recent - older
-        st.metric("📊 Trend", f"{trend:+.2f}", delta=f"{trend:+.2f}")
-    else:
-        st.metric("📊 Trend", "N/A")
+    st.metric("⏳ Pending AI", pending_count, delta=-pending_count if pending_count > 0 else 0, delta_color="inverse")
 
 st.markdown("---")
 
@@ -276,14 +328,14 @@ with col1:
         showlegend=False,
         plot_bgcolor='white',
         margin=dict(t=20, b=20, l=20, r=20),
-        yaxis_title="Number of Reviews",
+        yaxis_title="Reviews",
         xaxis_title="Rating"
     )
     
     st.plotly_chart(fig, use_container_width=True)
 
 with col2:
-    st.markdown("### 📅 Reviews Over Time")
+    st.markdown("### 📅 Reviews Timeline")
     if len(df) > 1:
         df['date'] = df['timestamp'].dt.date
         timeline = df.groupby('date').size().reset_index(name='count')
@@ -303,14 +355,12 @@ with col2:
             height=350,
             showlegend=False,
             plot_bgcolor='white',
-            margin=dict(t=20, b=20, l=20, r=20),
-            yaxis_title="Reviews",
-            xaxis_title="Date"
+            margin=dict(t=20, b=20, l=20, r=20)
         )
         
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("📊 Timeline requires more data points")
+        st.info("📊 Need more data")
 
 st.markdown("---")
 
@@ -326,7 +376,7 @@ with col1:
     <div class="sentiment-card" style="background: #FFEBEE; border-left: 5px solid #D32F2F;">
         <div style="font-size: 3rem;">😞</div>
         <div class="sentiment-number" style="color: #D32F2F;">{negative}</div>
-        <div class="sentiment-label">Negative ({neg_pct:.1f}%)</div>
+        <div>Negative ({neg_pct:.1f}%)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -337,7 +387,7 @@ with col2:
     <div class="sentiment-card" style="background: #FFFDE7; border-left: 5px solid #FBC02D;">
         <div style="font-size: 3rem;">😐</div>
         <div class="sentiment-number" style="color: #FBC02D;">{neutral}</div>
-        <div class="sentiment-label">Neutral ({neu_pct:.1f}%)</div>
+        <div>Neutral ({neu_pct:.1f}%)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -348,66 +398,53 @@ with col3:
     <div class="sentiment-card" style="background: #E8F5E9; border-left: 5px solid #388E3C;">
         <div style="font-size: 3rem;">😊</div>
         <div class="sentiment-number" style="color: #388E3C;">{positive}</div>
-        <div class="sentiment-label">Positive ({pos_pct:.1f}%)</div>
+        <div>Positive ({pos_pct:.1f}%)</div>
     </div>
     """, unsafe_allow_html=True)
 
 st.markdown("---")
 
 # Reviews List
-st.markdown("## 📝 Detailed Reviews with AI Analysis")
+st.markdown("## 📝 Customer Reviews with AI Analysis")
 
-# Sorting and filtering
-col1, col2, col3 = st.columns([2, 2, 1])
+# Sorting
+col1, col2 = st.columns([3, 1])
 
 with col1:
     sort_by = st.selectbox(
         "Sort by",
-        ["Most Recent", "Oldest First", "Highest Rating", "Lowest Rating"]
+        ["Most Recent", "Oldest First", "Highest Rating", "Lowest Rating", "Pending AI First"]
     )
 
 with col2:
-    show_critical = st.checkbox("🚨 Show Critical Only (≤2★)", value=False)
-
-with col3:
-    per_page = st.selectbox("Per Page", [10, 25, 50], index=0)
+    show_critical = st.checkbox("🚨 Critical Only", value=False)
 
 # Apply sorting
-sort_map = {
-    "Most Recent": ('timestamp', False),
-    "Oldest First": ('timestamp', True),
-    "Highest Rating": ('rating', False),
-    "Lowest Rating": ('rating', True)
-}
-sort_col, sort_asc = sort_map[sort_by]
-df = df.sort_values(sort_col, ascending=sort_asc)
+if sort_by == "Pending AI First":
+    df['has_ai'] = df['ai_response'] != ""
+    df = df.sort_values(['has_ai', 'timestamp'], ascending=[True, False])
+elif sort_by == "Most Recent":
+    df = df.sort_values('timestamp', ascending=False)
+elif sort_by == "Oldest First":
+    df = df.sort_values('timestamp', ascending=True)
+elif sort_by == "Highest Rating":
+    df = df.sort_values('rating', ascending=False)
+else:  # Lowest Rating
+    df = df.sort_values('rating', ascending=True)
 
-# Filter critical
 if show_critical:
     df = df[df['rating'] <= 2]
     if df.empty:
-        st.success("✅ No critical reviews found!")
+        st.success("✅ No critical reviews!")
         st.stop()
 
-# Pagination
-total = len(df)
-total_pages = (total + per_page - 1) // per_page
-
-if total_pages > 1:
-    page = st.number_input("Page", 1, total_pages, 1)
-    start = (page - 1) * per_page
-    end = min(start + per_page, total)
-    df_page = df.iloc[start:end]
-    st.caption(f"Showing {start + 1}-{end} of {total} reviews")
-else:
-    df_page = df
-
 # Display reviews
-for idx, row in df_page.iterrows():
+for idx, row in df.iterrows():
     rating = int(row['rating'])
     emoji = get_rating_emoji(rating)
     color = get_sentiment_color(rating)
     rating_label = get_rating_text(rating)
+    has_ai = row['ai_response'] != ""
     
     st.markdown(
         f'<div class="review-card" style="border-left-color: {color};">',
@@ -415,7 +452,7 @@ for idx, row in df_page.iterrows():
     )
     
     # Header
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         st.markdown(
             f'<span class="rating-badge" style="background: {color};">'
@@ -423,38 +460,52 @@ for idx, row in df_page.iterrows():
             unsafe_allow_html=True
         )
     with col2:
-        st.caption(f"🕐 {row['timestamp'].strftime('%b %d, %Y %I:%M %p')}")
+        if not has_ai:
+            st.markdown('<span class="pending-badge">⏳ Pending AI</span>', unsafe_allow_html=True)
+    with col3:
+        st.caption(f"🕐 {row['timestamp'].strftime('%b %d, %I:%M %p')}")
     
-    # Customer Review
-    st.markdown(
-        f'<div class="review-text">"{row["review"]}"</div>',
-        unsafe_allow_html=True
-    )
+    # Review
+    st.markdown(f'<div class="review-text">"{row["review"]}"</div>', unsafe_allow_html=True)
     
-    # AI Analysis Section
-    with st.expander("🤖 AI Analysis & Recommendations", expanded=(rating <= 2)):
-        
-        # Summary
-        st.markdown('<div class="ai-section">', unsafe_allow_html=True)
-        st.markdown('<div class="ai-section-title">📋 AI Summary</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="ai-section-content">{row["ai_summary"]}</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown("")
-        
-        # Customer Response
-        st.markdown('<div class="ai-section" style="background: #E8F5E9; border-left-color: #388E3C;">', unsafe_allow_html=True)
-        st.markdown('<div class="ai-section-title" style="color: #2E7D32;">💬 Response Sent to Customer</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="ai-section-content">{row["ai_response"]}</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown("")
-        
-        # Recommendations
-        st.markdown('<div class="ai-section" style="background: #FFF3E0; border-left-color: #F57C00;">', unsafe_allow_html=True)
-        st.markdown('<div class="ai-section-title" style="color: #E65100;">🎯 Recommended Actions</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="ai-section-content">{row["recommended_actions"]}</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    # AI Section or Generate Button
+    if has_ai:
+        with st.expander("🤖 AI Analysis & Recommendations", expanded=(rating <= 2)):
+            st.markdown('<div class="ai-section">', unsafe_allow_html=True)
+            st.markdown('<div class="ai-section-title">📋 AI Summary</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="ai-section-content">{row["ai_summary"]}</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown("")
+            
+            st.markdown('<div class="ai-section" style="background: #E8F5E9; border-left-color: #388E3C;">', unsafe_allow_html=True)
+            st.markdown('<div class="ai-section-title" style="color: #2E7D32;">💬 Customer Response</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="ai-section-content">{row["ai_response"]}</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown("")
+            
+            st.markdown('<div class="ai-section" style="background: #FFF3E0; border-left-color: #F57C00;">', unsafe_allow_html=True)
+            st.markdown('<div class="ai-section-title" style="color: #E65100;">🎯 Recommended Actions</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="ai-section-content">{row["recommended_actions"]}</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        if api_key:
+            if st.button(f"🤖 Generate AI Analysis", key=f"gen_{idx}"):
+                with st.spinner("Generating AI insights..."):
+                    model = configure_gemini_api(api_key)
+                    if model:
+                        ai_content = generate_all_ai_content(model, row['rating'], row['review'])
+                        update_review_with_ai(
+                            idx,
+                            ai_content['ai_response'],
+                            ai_content['ai_summary'],
+                            ai_content['recommended_actions']
+                        )
+                        st.success("✅ AI analysis generated!")
+                        st.rerun()
+        else:
+            st.warning("⚠️ Enter API key above to generate AI insights")
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -462,7 +513,7 @@ for idx, row in df_page.iterrows():
 st.markdown("---")
 st.markdown("## 💾 Export Data")
 
-col1, col2, col3 = st.columns([1, 1, 2])
+col1, col2 = st.columns(2)
 
 with col1:
     csv = df.to_csv(index=False)
@@ -488,7 +539,7 @@ with col2:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #95a5a6; padding: 2rem 0;'>
-    <p style='margin: 0; font-size: 0.95rem;'>🤖 Powered by Google Gemini AI Analytics</p>
-    <p style='margin: 0.5rem 0 0 0; font-size: 0.85rem;'>Admin Dashboard • Fynd AI Assessment • 2024</p>
+    <p style='margin: 0; font-size: 0.95rem;'>🤖 Powered by Google Gemini AI</p>
+    <p style='margin: 0.5rem 0 0 0; font-size: 0.85rem;'>Admin Dashboard • Fynd AI Assessment • 2025</p>
 </div>
 """, unsafe_allow_html=True)
