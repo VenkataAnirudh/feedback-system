@@ -47,24 +47,33 @@ def load_reviews():
     try:
         worksheet = get_google_sheet()
         if worksheet is None:
-            st.warning("⚠️ Cannot connect to Google Sheets")
             return pd.DataFrame(columns=['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions'])
         
         # Get all records
         data = worksheet.get_all_records()
         
         if not data:
-            st.info("📭 No reviews found in Google Sheet yet")
             return pd.DataFrame(columns=['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions'])
         
         df = pd.DataFrame(data)
         
-        # Convert timestamp to datetime
-        if len(df) > 0 and 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        # Ensure all required columns exist
+        required_cols = ['timestamp', 'rating', 'review', 'ai_response', 'ai_summary', 'recommended_actions']
+        for col in required_cols:
+            if col not in df.columns:
+                df[col] = ''
         
-        # Fill empty strings with actual empty values for better checking
+        # Convert timestamp to datetime - CRITICAL FIX
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+            # Drop rows with invalid timestamps
+            df = df.dropna(subset=['timestamp'])
+        
+        # Fill NaN with empty strings for safety
         df = df.fillna('')
+        
+        # Convert rating to int
+        df['rating'] = pd.to_numeric(df['rating'], errors='coerce').fillna(3).astype(int)
         
         return df
         
@@ -207,7 +216,7 @@ Provide 3 concrete action items:"""
             }
 
 # ============================================
-# UTILITY FUNCTIONS
+# UTILITY FUNCTIONS - SAFE DATA ACCESS
 # ============================================
 
 def get_sentiment_color(rating):
@@ -265,11 +274,24 @@ def time_ago(timestamp):
         return "Unknown"
 
 def check_if_ai_processed(row):
-    """Check if a review row has been processed by AI"""
+    """Check if a review row has been processed by AI - SAFE ACCESS"""
     try:
-        # Check if ai_response exists and is not empty
-        ai_response = str(row.get('ai_response', '')).strip()
+        # Safely check if ai_response exists and is not empty
+        if 'ai_response' not in row:
+            return False
+        ai_response = str(row['ai_response']).strip()
         return len(ai_response) > 0
     except:
         return False
 
+def safe_get_value(row, key, default=''):
+    """Safely get value from row with fallback"""
+    try:
+        if key not in row:
+            return default
+        value = row[key]
+        if pd.isna(value) or value is None:
+            return default
+        return str(value).strip()
+    except:
+        return default
