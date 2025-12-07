@@ -10,8 +10,6 @@ from utils import (
     get_rating_text, time_ago, safe_get_value
 )
 
-# --- CUSTOM AI GENERATION FUNCTION ---
-# This ensures NEW reviews get the 10-word tech actions you wanted
 def generate_tech_analysis(model, rating, review_text):
     """
     Generates tech-focused, concise recommended actions.
@@ -39,7 +37,7 @@ def generate_tech_analysis(model, rating, review_text):
         
         return {
             "ai_response": data.get("ai_response", ""),
-            "ai_summary": "See Recommendations", # Placeholder
+            "ai_summary": "See Recommendations", 
             "recommended_actions": data.get("recommended_actions", "")
         }
     except Exception as e:
@@ -56,7 +54,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS Styling (Kept exactly as is)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -124,7 +121,6 @@ div[data-testid="metric-container"] {
 </style>
 """, unsafe_allow_html=True)
 
-# Header
 st.markdown("""
 <div class="dashboard-header">
     <div class="dashboard-title">📊 Admin Analytics Dashboard</div>
@@ -132,7 +128,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar Configuration
 with st.sidebar:
     st.markdown("## 🤖 AI Processing")
     
@@ -172,7 +167,6 @@ with st.sidebar:
                                 status_text.text(f"Processing review {idx + 1} of {len(pending_df)}...")
                                 
                                 try:
-                                    # Use custom tech generator
                                     ai_content = generate_tech_analysis(
                                         model,
                                         int(row['rating']),
@@ -242,10 +236,8 @@ with st.sidebar:
     if st.button("🔃 Refresh Now", use_container_width=True):
         st.rerun()
 
-# Load Reviews
 df = load_reviews()
 
-# Apply Filters
 if not df.empty and 'timestamp' in df.columns:
     df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
     df = df.dropna(subset=['timestamp'])
@@ -267,7 +259,6 @@ if df.empty:
     st.info("💡 Try adjusting your filters or submit reviews via the User Dashboard")
     st.stop()
 
-# Metrics
 total_reviews = len(df)
 avg_rating = df['rating'].mean()
 critical_reviews = len(df[df['rating'] <= 2])
@@ -290,7 +281,6 @@ with col5:
 
 st.markdown("---")
 
-# Charts
 col1, col2 = st.columns(2)
 
 with col1:
@@ -345,7 +335,6 @@ with col2:
 
 st.markdown("---")
 
-# Reviews Section
 st.markdown("## 📝 Customer Reviews")
 
 col1, col2, col3 = st.columns([2, 1, 1])
@@ -363,7 +352,6 @@ with col2:
 with col3:
     display_mode = st.selectbox("Display", ["Show All", "Recent 5", "Recent 10"], index=0)
 
-# Apply sorting
 try:
     if sort_option == "Pending First":
         df['has_ai'] = df['ai_response'].apply(lambda x: str(x).strip() != '')
@@ -385,7 +373,6 @@ if show_critical:
         st.success("✅ No critical reviews found!")
         st.stop()
 
-# Apply display limit
 if display_mode == "Recent 5":
     df = df.head(5)
     st.info(f"📊 Showing 5 most recent reviews")
@@ -395,16 +382,12 @@ elif display_mode == "Recent 10":
 else:
     st.info(f"📊 Showing all {len(df)} reviews")
 
-# Display Reviews
 for idx, row in df.iterrows():
     try:
         rating = int(row.get('rating', 3))
         review_text = safe_get_value(row, 'review', 'No review text')
         timestamp = row.get('timestamp', datetime.now())
         
-        # --- CRITICAL CHANGE: We prefer 'recommendation_actions' now ---
-        # Note: Your Google Sheet column is named 'recommendation_actions' (from screenshot)
-        # but utils might be saving it as 'recommended_actions'. We check both.
         ai_actions = safe_get_value(row, 'recommendation_actions') 
         if not ai_actions:
             ai_actions = safe_get_value(row, 'recommended_actions')
@@ -443,7 +426,6 @@ for idx, row in df.iterrows():
         st.markdown(f'<div class="review-text">"{review_text}"</div>', unsafe_allow_html=True)
         
         if has_ai:
-            # --- MODIFIED: DISPLAY ACTIONS INSTEAD OF SUMMARY ---
             if ai_actions:
                 st.markdown(f'''
                 <div class="ai-section">
@@ -483,7 +465,6 @@ for idx, row in df.iterrows():
     except Exception as e:
         continue
 
-# Export
 st.markdown("---")
 st.markdown("## 💾 Export Data")
 
@@ -503,7 +484,6 @@ with col3:
         pending_csv = pending_df.to_csv(index=False)
         st.download_button("📥 Pending Reviews", pending_csv, f"pending_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", "text/csv", use_container_width=True)
 
-# Footer
 st.markdown("---")
 st.markdown('<div style="text-align: center; color: #95a5a6; padding: 2rem 0;"><p style="margin: 0;">🤖 Powered by Google Gemini AI & Google Sheets</p><p style="margin: 0.5rem 0 0 0;">Admin Dashboard • Fynd AI Assessment • 2025</p></div>', unsafe_allow_html=True)
 
