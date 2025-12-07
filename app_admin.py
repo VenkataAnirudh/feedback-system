@@ -1,13 +1,53 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from utils import (
-    load_reviews, configure_gemini_api, generate_all_ai_content,
-    update_review_with_ai, get_sentiment_color, get_rating_emoji,
-    get_rating_text, time_ago, check_if_ai_processed, safe_get_value
-)
-from datetime import datetime, timedelta
+import json
 import time
+from datetime import datetime, timedelta
+from utils import (
+    load_reviews, configure_gemini_api, 
+    update_review_with_ai, get_sentiment_color, get_rating_emoji,
+    get_rating_text, time_ago, safe_get_value
+)
+
+# --- CUSTOM AI GENERATION FUNCTION ---
+# This ensures NEW reviews get the 10-word tech actions you wanted
+def generate_tech_analysis(model, rating, review_text):
+    """
+    Generates tech-focused, concise recommended actions.
+    """
+    prompt = f"""
+    You are a Technical QA System. Analyze this feedback (Rating: {rating}/5):
+    "{review_text}"
+
+    1. Write a polite, short response to the user.
+    2. Provide 3 General-Purpose TECHNICAL Recommended Actions.
+       - Focus on: Code optimization, System quality, Performance, or Tech debt.
+       - CONSTRAINT: Each action must be under 10 words.
+       - Format: Action 1 | Action 2 | Action 3
+
+    Return strictly valid JSON:
+    {{
+        "ai_response": "Your response here...",
+        "recommended_actions": "Action 1 | Action 2 | Action 3"
+    }}
+    """
+    try:
+        response = model.generate_content(prompt)
+        text_response = response.text.replace('```json', '').replace('```', '').strip()
+        data = json.loads(text_response)
+        
+        return {
+            "ai_response": data.get("ai_response", ""),
+            "ai_summary": "See Recommendations", # Placeholder
+            "recommended_actions": data.get("recommended_actions", "")
+        }
+    except Exception as e:
+        return {
+            "ai_response": "Error generating analysis.",
+            "ai_summary": "Error",
+            "recommended_actions": "Manual review required."
+        }
 
 st.set_page_config(
     page_title="Admin Dashboard - Fynd AI",
@@ -16,7 +56,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS Styling
+# CSS Styling (Kept exactly as is)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -132,7 +172,8 @@ with st.sidebar:
                                 status_text.text(f"Processing review {idx + 1} of {len(pending_df)}...")
                                 
                                 try:
-                                    ai_content = generate_all_ai_content(
+                                    # Use custom tech generator
+                                    ai_content = generate_tech_analysis(
                                         model,
                                         int(row['rating']),
                                         str(row['review'])
@@ -207,7 +248,7 @@ df = load_reviews()
 # Apply Filters
 if not df.empty and 'timestamp' in df.columns:
     df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-    df = df.dropna(subset=['timestamp'])  # Remove invalid timestamps
+    df = df.dropna(subset=['timestamp'])
     
     if date_filter == "Today":
         today = datetime.now().date()
@@ -360,9 +401,15 @@ for idx, row in df.iterrows():
         rating = int(row.get('rating', 3))
         review_text = safe_get_value(row, 'review', 'No review text')
         timestamp = row.get('timestamp', datetime.now())
-        ai_summary = safe_get_value(row, 'ai_summary')
+        
+        # --- CRITICAL CHANGE: We prefer 'recommendation_actions' now ---
+        # Note: Your Google Sheet column is named 'recommendation_actions' (from screenshot)
+        # but utils might be saving it as 'recommended_actions'. We check both.
+        ai_actions = safe_get_value(row, 'recommendation_actions') 
+        if not ai_actions:
+            ai_actions = safe_get_value(row, 'recommended_actions')
+            
         ai_response = safe_get_value(row, 'ai_response')
-        ai_actions = safe_get_value(row, 'recommended_actions')
         
         emoji = get_rating_emoji(rating)
         color = get_sentiment_color(rating)
@@ -396,11 +443,14 @@ for idx, row in df.iterrows():
         st.markdown(f'<div class="review-text">"{review_text}"</div>', unsafe_allow_html=True)
         
         if has_ai:
-            if ai_summary:
-                st.markdown('<div class="ai-section"><div class="ai-title">📋 Summary</div><div class="ai-content">' + ai_summary + '</div></div>', unsafe_allow_html=True)
-            
+            # --- MODIFIED: DISPLAY ACTIONS INSTEAD OF SUMMARY ---
             if ai_actions:
-                st.markdown('<div class="ai-section" style="background: #FFF3E0; border-left-color: #F57C00;"><div class="ai-title" style="color: #E65100;">🎯 Recommendations</div><div class="ai-content">' + ai_actions + '</div></div>', unsafe_allow_html=True)
+                st.markdown(f'''
+                <div class="ai-section">
+                    <div class="ai-title">🎯 Recommended Actions</div>
+                    <div class="ai-content">{ai_actions}</div>
+                </div>
+                ''', unsafe_allow_html=True)
             
             if ai_response:
                 with st.expander("💬 View Customer Response"):
@@ -414,7 +464,7 @@ for idx, row in df.iterrows():
                     if model:
                         with st.spinner("Generating..."):
                             try:
-                                ai_content = generate_all_ai_content(model, rating, review_text)
+                                ai_content = generate_tech_analysis(model, rating, review_text)
                                 success = update_review_with_ai(idx, ai_content['ai_response'], ai_content['ai_summary'], ai_content['recommended_actions'])
                                 
                                 if success:
