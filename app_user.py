@@ -3,7 +3,6 @@ from utils import save_review, get_rating_emoji, get_rating_text, get_sentiment_
 
 st.set_page_config(page_title="Customer Feedback", page_icon="⭐", layout="centered")
 
-# CSS
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -45,7 +44,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Header
 st.markdown("""
 <div class="header-container">
     <div class="header-title">⭐ Customer Feedback Portal</div>
@@ -53,20 +51,17 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Session state
 if 'submitted' not in st.session_state:
     st.session_state.submitted = False
 if 'current_rating' not in st.session_state:
     st.session_state.current_rating = 3
 
-# Main Form
 if not st.session_state.submitted:
     st.markdown("### 📊 Rate Your Experience")
     
     rating = st.slider("Drag to rate", 1, 5, st.session_state.current_rating)
     st.session_state.current_rating = rating
     
-    # Dynamic display
     emoji = get_rating_emoji(rating)
     rating_text = get_rating_text(rating)
     color = get_sentiment_color(rating)
@@ -100,7 +95,6 @@ if not st.session_state.submitted:
                 else:
                     st.error("❌ Submission failed. Please try again.")
 
-# Success
 else:
     st.markdown("""
     <div class="success-box">
@@ -119,7 +113,6 @@ else:
         st.session_state.current_rating = 3
         st.rerun()
 
-# Footer
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #95a5a6; padding: 2rem 0;'>
