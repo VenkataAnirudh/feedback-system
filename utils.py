@@ -127,7 +127,7 @@ def configure_gemini_api(api_key):
     """Configure and test Gemini API connection"""
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         
         # Test the connection
         response = model.generate_content("Say OK")
@@ -272,3 +272,4 @@ def check_if_ai_processed(row):
         return len(ai_response) > 0
     except:
         return False
+
