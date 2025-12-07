@@ -4,14 +4,14 @@ A full-stack feedback solution built with **Streamlit**, **Google Sheets**, and 
 
 ## 🚀 Features
 
-### 👤 User Portal (`app_user.py`)
+### 👤 User Portal (`app_user.py`) - [![User App](https://img.shields.io/badge/Open-User_App-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://feedback-system-hvggjudf6px7eknazwj2zq.streamlit.app/)
 
   * **Interactive Rating System:** Drag slider for star ratings (1-5) with dynamic emojis and sentiment colors.
   * **Feedback Form:** Text area with character count validation.
   * **Real-time Submission:** Instantly saves data to Google Sheets.
   * **Engagement:** Success animations (balloons) for positive feedback.
 
-### 🛡️ Admin Dashboard (`app_admin.py`)
+### 🛡️ Admin Dashboard (`app_admin.py`) - [![Admin Dashboard](https://img.shields.io/badge/Open-Admin_Dashboard-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://feedback-system-ceyvk7ryjljkehbfge5a2t.streamlit.app/)
 
   * **Live Analytics:** Key metrics (Total Reviews, Average Rating, Critical Issues).
   * **Data Visualization:** Interactive charts for rating distribution and review volume over time using Plotly.
@@ -106,3 +106,4 @@ The system uses **Gemini 2.5 Flash Lite** to process reviews. When the admin cli
 ## 📄 License
 
 This project is open-source and available under the MIT License.
+
