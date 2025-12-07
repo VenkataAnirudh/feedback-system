@@ -48,7 +48,7 @@ def generate_tech_analysis(model, rating, review_text):
         }
 
 st.set_page_config(
-    page_title="Admin Dashboard - Fynd AI",
+    page_title="Admin Dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -124,7 +124,7 @@ div[data-testid="metric-container"] {
 st.markdown("""
 <div class="dashboard-header">
     <div class="dashboard-title">📊 Admin Analytics Dashboard</div>
-    <div class="dashboard-subtitle">Real-time AI-powered customer feedback analysis • Fynd AI Assessment</div>
+    <div class="dashboard-subtitle">Real-time AI-powered customer feedback analysis </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -485,8 +485,9 @@ with col3:
         st.download_button("📥 Pending Reviews", pending_csv, f"pending_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", "text/csv", use_container_width=True)
 
 st.markdown("---")
-st.markdown('<div style="text-align: center; color: #95a5a6; padding: 2rem 0;"><p style="margin: 0;">🤖 Powered by Google Gemini AI & Google Sheets</p><p style="margin: 0.5rem 0 0 0;">Admin Dashboard • Fynd AI Assessment • 2025</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align: center; color: #95a5a6; padding: 2rem 0;"><p style="margin: 0;">🤖 Powered by Google Gemini AI & Google Sheets</p><p style="margin: 0.5rem 0 0 0;">Admin Dashboard • 2025</p></div>', unsafe_allow_html=True)
 
 if auto_refresh:
     time.sleep(30)
     st.rerun()
+
