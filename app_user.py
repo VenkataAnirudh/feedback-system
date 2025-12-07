@@ -117,6 +117,6 @@ st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #95a5a6; padding: 2rem 0;'>
     <p style='margin: 0;'>🤖 AI-Powered Feedback System</p>
-    <p style='margin: 0.5rem 0 0 0; font-size: 0.85rem;'>Fynd AI Assessment • 2025</p>
 </div>
 """, unsafe_allow_html=True)
+
