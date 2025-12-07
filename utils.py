@@ -15,7 +15,7 @@ def configure_gemini_api(api_key):
     """Configure Gemini API and return model"""
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         # Test the connection
         test_response = model.generate_content("Say 'OK' if you can hear me")
         if test_response.text:
@@ -205,3 +205,4 @@ def get_rating_text(rating):
         5: "Very Satisfied"
     }
     return texts.get(rating, "Unknown")
+
