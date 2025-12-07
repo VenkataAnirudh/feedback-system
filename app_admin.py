@@ -100,14 +100,14 @@ div[data-testid="metric-container"] {
 
 .ai-section {
     background: #e3f2fd;
-    padding: 1rem;
+    padding: 1.2rem;
     border-radius: 10px;
-    margin: 0.5rem 0;
+    margin: 0.8rem 0;
     border-left: 4px solid #2196F3;
 }
 
 .ai-title {
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 700;
     color: #1976D2;
     margin-bottom: 0.5rem;
@@ -158,6 +158,15 @@ div[data-testid="metric-container"] {
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
+}
+
+.api-warning {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    padding: 1rem;
+    border-radius: 8px;
+    color: #856404;
+    margin: 1rem 0;
 }
 
 #MainMenu {visibility: hidden;}
@@ -239,7 +248,6 @@ with st.sidebar:
                                     time.sleep(0.5)
                                     
                                 except Exception as e:
-                                    st.error(f"Error processing review {idx + 1}: {str(e)}")
                                     failed_count += 1
                                 
                                 progress_bar.progress((idx + 1) / len(pending_df))
@@ -259,7 +267,7 @@ with st.sidebar:
                 else:
                     st.error("❌ Failed to configure Gemini API")
     else:
-        st.warning("⚠️ Enter Gemini API key to enable AI processing")
+        st.info("💡 Enter your Gemini API key to enable AI processing")
     
     st.markdown("---")
     
@@ -357,56 +365,62 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.markdown("### 📊 Rating Distribution")
-    rating_counts = df['rating'].value_counts().sort_index()
-    colors = [get_sentiment_color(int(i)) for i in rating_counts.index]
-    
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=[f"{get_rating_emoji(int(i))} {int(i)}★" for i in rating_counts.index],
-        y=rating_counts.values,
-        marker_color=colors,
-        text=rating_counts.values,
-        textposition='outside',
-        textfont=dict(size=14, weight='bold')
-    ))
-    fig.update_layout(
-        height=320,
-        showlegend=False,
-        plot_bgcolor='white',
-        margin=dict(t=20, b=20, l=20, r=20),
-        xaxis=dict(title="Rating", titlefont=dict(size=14)),
-        yaxis=dict(title="Count", titlefont=dict(size=14))
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-with col2:
-    st.markdown("### 📅 Reviews Timeline")
-    if len(df) > 1:
-        df_timeline = df.copy()
-        df_timeline['date'] = df_timeline['timestamp'].dt.date
-        timeline = df_timeline.groupby('date').size().reset_index(name='count')
+    try:
+        rating_counts = df['rating'].value_counts().sort_index()
+        colors = [get_sentiment_color(int(i)) for i in rating_counts.index]
         
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=timeline['date'],
-            y=timeline['count'],
-            mode='lines+markers',
-            line=dict(color='#667eea', width=3),
-            marker=dict(size=10, color='#667eea'),
-            fill='tozeroy',
-            fillcolor='rgba(102, 126, 234, 0.2)'
+        fig.add_trace(go.Bar(
+            x=[f"{get_rating_emoji(int(i))} {int(i)}★" for i in rating_counts.index],
+            y=rating_counts.values,
+            marker_color=colors,
+            text=rating_counts.values,
+            textposition='outside',
+            textfont=dict(size=14)
         ))
         fig.update_layout(
             height=320,
             showlegend=False,
             plot_bgcolor='white',
             margin=dict(t=20, b=20, l=20, r=20),
-            xaxis=dict(title="Date", titlefont=dict(size=14)),
-            yaxis=dict(title="Reviews", titlefont=dict(size=14))
+            xaxis_title="Rating",
+            yaxis_title="Count"
         )
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("📊 Need more data points to show timeline")
+    except Exception as e:
+        st.error(f"Error displaying chart: {str(e)}")
+
+with col2:
+    st.markdown("### 📅 Reviews Timeline")
+    try:
+        if len(df) > 1:
+            df_timeline = df.copy()
+            df_timeline['date'] = df_timeline['timestamp'].dt.date
+            timeline = df_timeline.groupby('date').size().reset_index(name='count')
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=timeline['date'],
+                y=timeline['count'],
+                mode='lines+markers',
+                line=dict(color='#667eea', width=3),
+                marker=dict(size=10, color='#667eea'),
+                fill='tozeroy',
+                fillcolor='rgba(102, 126, 234, 0.2)'
+            ))
+            fig.update_layout(
+                height=320,
+                showlegend=False,
+                plot_bgcolor='white',
+                margin=dict(t=20, b=20, l=20, r=20),
+                xaxis_title="Date",
+                yaxis_title="Reviews"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("📊 Need more data points to show timeline")
+    except Exception as e:
+        st.error(f"Error displaying timeline: {str(e)}")
 
 st.markdown("---")
 
@@ -426,12 +440,12 @@ with col1:
 with col2:
     show_critical = st.checkbox("🚨 Critical Only (≤2★)")
 
-# Apply sorting
+# Apply sorting - CHRONOLOGICAL ORDER (NEWEST FIRST BY DEFAULT)
 if sort_option == "Pending First":
     df['has_ai'] = df['ai_response'].apply(lambda x: str(x).strip() != '')
     df = df.sort_values(['has_ai', 'timestamp'], ascending=[True, False])
 elif sort_option == "Most Recent":
-    df = df.sort_values('timestamp', ascending=False)
+    df = df.sort_values('timestamp', ascending=False)  # Newest first
 elif sort_option == "Oldest":
     df = df.sort_values('timestamp', ascending=True)
 elif sort_option == "Highest Rated":
@@ -497,37 +511,43 @@ for idx, row in df.iterrows():
         unsafe_allow_html=True
     )
     
-    # AI Analysis Section
+    # AI Analysis Section - ALWAYS SHOW SUMMARY AND RECOMMENDATIONS
     if has_ai:
-        with st.expander("🤖 AI Analysis & Response", expanded=(rating <= 2)):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown('<div class="ai-section">', unsafe_allow_html=True)
-                st.markdown('<div class="ai-title">📋 Summary</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="ai-content">{row["ai_summary"]}</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown(
-                    '<div class="ai-section" style="background: #E8F5E9; border-left-color: #388E3C;">',
-                    unsafe_allow_html=True
-                )
-                st.markdown('<div class="ai-title" style="color: #2E7D32;">💬 Customer Response</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="ai-content">{row["ai_response"]}</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
+        # Display Summary
+        st.markdown('<div class="ai-section">', unsafe_allow_html=True)
+        st.markdown('<div class="ai-title">📋 Summary</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="ai-content">{row["ai_summary"]}</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Display Recommendations
+        st.markdown(
+            '<div class="ai-section" style="background: #FFF3E0; border-left-color: #F57C00;">',
+            unsafe_allow_html=True
+        )
+        st.markdown('<div class="ai-title" style="color: #E65100;">🎯 Recommendations</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="ai-content">{row["recommended_actions"]}</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Customer Response in Expander
+        with st.expander("💬 View Customer Response"):
             st.markdown(
-                '<div class="ai-section" style="background: #FFF3E0; border-left-color: #F57C00;">',
+                '<div class="ai-section" style="background: #E8F5E9; border-left-color: #388E3C;">',
                 unsafe_allow_html=True
             )
-            st.markdown('<div class="ai-title" style="color: #E65100;">🎯 Recommended Actions</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="ai-content">{row["recommended_actions"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="ai-content">{row["ai_response"]}</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
     
     else:
-        # Show generate button if API key is provided
-        if api_key:
+        # Show smooth API warning instead of error
+        if not api_key:
+            st.markdown("""
+            <div class="api-warning">
+                <strong>🔑 API Key Required</strong><br>
+                Please enter your Gemini API key in the sidebar to generate AI analysis for this review.
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            # Show generate button
             if st.button(f"🤖 Generate AI Analysis", key=f"gen_{idx}", type="secondary"):
                 model = configure_gemini_api(api_key)
                 if model:
@@ -546,11 +566,11 @@ for idx, row in df.iterrows():
                                 time.sleep(1)
                                 st.rerun()
                             else:
-                                st.error("❌ Failed to update review")
+                                st.warning("⚠️ Could not update the review. Please try again.")
                         except Exception as e:
-                            st.error(f"❌ Error: {str(e)}")
-        else:
-            st.warning("⚠️ Enter Gemini API key in sidebar to generate AI analysis")
+                            st.warning("⚠️ AI generation failed. Please check your API key and try again.")
+                else:
+                    st.warning("⚠️ Could not connect to Gemini AI. Please verify your API key.")
     
     st.markdown('</div>', unsafe_allow_html=True)
 
